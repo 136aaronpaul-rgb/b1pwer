@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "b1pwer"
+version = "1.0.0"
+description = "⚡ b1pwer - Network Recon & Threat Assessment | Aaron Paulos Division"
+authors = [{name = "Aaron Paulos"}]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "textual>=0.40.0",
+    "rich>=13.0.0",
+    "python-nmap>=0.7.1",
+    "scapy>=2.5.0",
+    "dnslib>=0.9.25",
+    "ipwhois>=1.3.0",
+]
+
+[project.scripts]
+b1pwer = "b1pwer.__main__:main"
+
+[project.urls]
+Homepage = "https://b1pwer.surge.sh"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["b1pwer*"]

@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+b1pwer_reports/
+b1pwer_1.0.0_all.deb
+b1pwer-deb/
+*.egg-info/
