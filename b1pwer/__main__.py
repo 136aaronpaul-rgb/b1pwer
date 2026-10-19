@@ -54,6 +54,15 @@ def main():
     parser.add_argument("--set-config", default="", help="Set config: b1pwer --set-config 'key=value'")
     parser.add_argument("--plugins", action="store_true", help="List plugins")
     parser.add_argument("--run-plugin", default="", help="Run a plugin")
+    parser.add_argument("--forward", default="", help="Port forward: local:remote_host:remote_port")
+    parser.add_argument("--export-csv", action="store_true", help="Export last scan to CSV")
+    parser.add_argument("--export-xml", action="store_true", help="Export last scan to XML")
+    parser.add_argument("--schedule", default="", help="Schedule auto-scan: target [hourly|daily|weekly]")
+    parser.add_argument("--unschedule", default="", help="Remove scheduled scan")
+    parser.add_argument("--list-schedules", action="store_true", help="List scheduled scans")
+    parser.add_argument("--multi", default="", help="Multi-target playbook: comma-separated targets")
+    parser.add_argument("--update", action="store_true", help="Check for updates")
+    parser.add_argument("--logs", action="store_true", help="Show recent logs")
     parser.add_argument("--version", action="version",
                        version="b1pwer v1.0.0 | Aaron Paulos Division")
     args = parser.parse_args()
@@ -441,6 +450,115 @@ def main():
             console.print(table)
         else:
             console.print("[yellow]No endpoints found[/yellow]")
+        return
+
+    # Port forward
+    if args.forward:
+        from .modules.forward import PortForwarder
+        pf = PortForwarder()
+        parts = args.forward.split(":")
+        if len(parts) == 3:
+            rule = pf.add(int(parts[0]), parts[1], int(parts[2]))
+            pf.start(rule)
+            console.print(f"[green]Forwarding 127.0.0.1:{parts[0]} -> {parts[1]}:{parts[2]}[/green]")
+            console.print("Press Ctrl+C to stop")
+            import time
+            try:
+                while True: time.sleep(1)
+            except KeyboardInterrupt:
+                pf.stop_all()
+        else:
+            console.print("[red]Format: b1pwer --forward LOCAL:REMOTE_HOST:REMOTE_PORT[/red]")
+        return
+
+    # Export
+    if args.export_csv or args.export_xml:
+        from .modules.export import Exporter
+        from .modules.history import HistoryDB
+        exp = Exporter(args.output)
+        db = HistoryDB()
+        h = db.get_history(limit=1)
+        if h:
+            last = h[0]
+            if args.export_csv:
+                path = exp.to_csv([last], last["target"])
+                console.print(f"[green]CSV: {path}[/green]")
+            if args.export_xml:
+                path = exp.to_xml(last, last["target"])
+                console.print(f"[green]XML: {path}[/green]")
+        else:
+            console.print("[yellow]No scans in history yet[/yellow]")
+        db.close()
+        return
+
+    # Schedule
+    if args.schedule:
+        from .modules.scheduler import Scheduler
+        sch = Scheduler()
+        parts = args.schedule.split()
+        if len(parts) >= 1:
+            target = parts[0]
+            sched = parts[1] if len(parts) > 1 else "daily"
+            result = sch.add_scan(target, sched)
+            console.print(f"[green]{result}[/green]")
+        return
+
+    if args.unschedule:
+        from .modules.scheduler import Scheduler
+        sch = Scheduler()
+        result = sch.remove_scan(args.unschedule)
+        console.print(f"[green]{result}[/green]")
+        return
+
+    if args.list_schedules:
+        from .modules.scheduler import Scheduler
+        sch = Scheduler()
+        entries = sch.list()
+        if entries:
+            for e in entries:
+                console.print(f"  {e}")
+        else:
+            console.print("[yellow]No scheduled scans[/yellow]")
+        return
+
+    # Multi-target
+    if args.multi:
+        from .modules.multiplay import MultiPlaybook
+        mp = MultiPlaybook(args.output)
+        targets = [t.strip() for t in args.multi.split(",") if t.strip()]
+        results = mp.run(targets, profile=args.profile, threads=args.threads)
+        return
+
+    # Update
+    if args.update:
+        from .modules.update import Updater
+        up = Updater()
+        result = up.check()
+        console.print(f"  Current: {result['current']}")
+        console.print(f"  Latest:  {result['latest']}")
+        if result['update_available']:
+            console.print(f"  [red]{result['message']}[/red]")
+            console.print(f"  URL: {result['url']}")
+        else:
+            console.print(f"  [green]{result['message']}[/green]")
+        return
+
+    # Logs
+    if args.logs:
+        from .modules.logging_mod import B1pwerLogger
+        logger = B1pwerLogger()
+        entries = logger.tail(20)
+        if entries:
+            table = Table(title="Recent Logs")
+            table.add_column("Time")
+            table.add_column("Level")
+            table.add_column("Module")
+            table.add_column("Message")
+            for e in entries:
+                table.add_row(e["time"][:19], e["level"], e["module"], e["message"][:50])
+            console.print(table)
+        else:
+            console.print("[yellow]No logs yet[/yellow]")
         return
 
     if not args.target:
