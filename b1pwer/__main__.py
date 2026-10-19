@@ -1,5 +1,5 @@
 """
-b1pwer - Entry point | 24 modules
+b1pwer - Entry point | 29 modules
 """
 import sys
 import argparse
@@ -40,11 +40,20 @@ def main():
     parser.add_argument("--sniff-time", type=int, default=10)
     parser.add_argument("--msf", default="")
     parser.add_argument("--cloud", action="store_true")
-    parser.add_argument("--api", action="store_true", help="API endpoint discovery")
-    parser.add_argument("--playbook", action="store_true", help="ONE COMMAND FULL ASSESSMENT")
-    parser.add_argument("--no-nuclei", action="store_true", help="Skip nuclei in playbook")
-    parser.add_argument("--no-cloud", action="store_true", help="Skip cloud in playbook")
-    parser.add_argument("--alerts", action="store_true", help="Show recent alerts")
+    parser.add_argument("--api", action="store_true")
+    parser.add_argument("--playbook", action="store_true")
+    parser.add_argument("--no-nuclei", action="store_true")
+    parser.add_argument("--no-cloud", action="store_true")
+    parser.add_argument("--alerts", action="store_true")
+    parser.add_argument("--brute-ssh", action="store_true", help="Brute force SSH")
+    parser.add_argument("--brute-ftp", action="store_true", help="Brute force FTP")
+    parser.add_argument("--smb", action="store_true", help="SMB/LDAP enumeration")
+    parser.add_argument("--api-server", action="store_true", help="Start REST API server")
+    parser.add_argument("--api-port", type=int, default=8443)
+    parser.add_argument("--config", action="store_true", help="Show config")
+    parser.add_argument("--set-config", default="", help="Set config: b1pwer --set-config 'key=value'")
+    parser.add_argument("--plugins", action="store_true", help="List plugins")
+    parser.add_argument("--run-plugin", default="", help="Run a plugin")
     parser.add_argument("--version", action="version",
                        version="b1pwer v1.0.0 | Aaron Paulos Division")
     args = parser.parse_args()
@@ -54,7 +63,108 @@ def main():
     console = Console()
     console.print(f"[bold cyan]b1pwer v1.0 | Aaron Paulos Division[/bold cyan]\n")
 
-    # ─── PLAYBOOK (KILLER FEATURE) ───
+    # API Server
+    if args.api_server:
+        from .modules.api_server import start_api_server
+        start_api_server(args.api_port)
+        return
+
+    # Config
+    if args.config:
+        from .modules.config import ConfigManager
+        cm = ConfigManager()
+        console.print(f"[bold]Configuration:[/bold]\n{cm.show()}")
+        return
+
+    if args.set_config:
+        from .modules.config import ConfigManager
+        cm = ConfigManager()
+        if "=" in args.set_config:
+            k, v = args.set_config.split("=", 1)
+            cm.set(k.strip(), v.strip())
+            console.print(f"[green]Set {k} = {v}[/green]")
+        return
+
+    # Plugins
+    if args.plugins:
+        from .modules.plugins import PluginManager
+        pm = PluginManager()
+        pm.discover()
+        plugins = pm.list()
+        if plugins:
+            table = Table(title="Plugins")
+            table.add_column("Command", style="cyan")
+            table.add_column("Name")
+            table.add_column("Version")
+            table.add_column("Author")
+            table.add_column("Description")
+            for p in plugins:
+                table.add_row(p["command"], p["name"], p["version"], p["author"], p["description"])
+            console.print(table)
+        else:
+            console.print("[yellow]No plugins found. Place .py files in ~/.b1pwer/plugins/[/yellow]")
+        return
+
+    if args.run_plugin:
+        from .modules.plugins import PluginManager
+        pm = PluginManager()
+        pm.discover()
+        result = pm.run(args.run_plugin, [])
+        console.print(result)
+        return
+
+    # Brute force
+    if args.brute_ssh and args.target:
+        from .modules.brute import BruteForcer
+        bf = BruteForcer()
+        if not bf.available:
+            console.print("[red]Hydra not installed (sudo apt install hydra)[/red]")
+            return
+        console.print(f"[bold magenta]Brute forcing SSH: {args.target}[/bold magenta]\n")
+        results = bf.brute_ssh(args.target)
+        if results:
+            console.print(f"[red]CREDENTIALS FOUND:[/red]")
+            for r in results:
+                console.print(f"  User: {r.username} | Pass: {r.password}")
+        else:
+            console.print("[green]No valid credentials found[/green]")
+        return
+
+    if args.brute_ftp and args.target:
+        from .modules.brute import BruteForcer
+        bf = BruteForcer()
+        if not bf.available:
+            console.print("[red]Hydra not installed[/red]")
+            return
+        console.print(f"[bold magenta]Brute forcing FTP: {args.target}[/bold magenta]\n")
+        results = bf.brute_ftp(args.target)
+        if results:
+            console.print(f"[red]CREDENTIALS FOUND:[/red]")
+            for r in results:
+                console.print(f"  User: {r.username} | Pass: {r.password}")
+        else:
+            console.print("[green]No valid credentials found[/green]")
+        return
+
+    # SMB
+    if args.smb and args.target:
+        from .modules.smb import SMBEnumerator
+        smb = SMBEnumerator()
+        console.print(f"[bold magenta]SMB Enum: {args.target}[/bold magenta]\n")
+        result = smb.enumerate(args.target)
+        table = Table(title=f"SMB - {result.target}")
+        table.add_column("Item")
+        table.add_column("Value")
+        table.add_row("Server", result.server_name or "N/A")
+        table.add_row("Domain", result.domain or "N/A")
+        table.add_row("Workgroup", result.workgroup or "N/A")
+        table.add_row("OS", result.os or "N/A")
+        table.add_row("Users", ", ".join(result.users[:10]) or "N/A")
+        table.add_row("Shares", ", ".join(result.shares[:10]) or "N/A")
+        console.print(table)
+        return
+
+    # Playbook
     if args.playbook and args.target:
         from .modules.playbook import Playbook
         pb = Playbook(args.output)
@@ -63,18 +173,15 @@ def main():
         console.print(f"  Profile: {args.profile}")
         console.print(f"  Nuclei: {'OFF' if args.no_nuclei else 'ON'}")
         console.print(f"  Cloud:  {'OFF' if args.no_cloud else 'ON'}")
-        console.print(f"  API:    ON")
         console.print()
         results = pb.run(
-            args.target,
-            profile=args.profile,
+            args.target, profile=args.profile,
             run_nuclei=not args.no_nuclei,
-            run_cloud=not args.no_cloud,
-            run_api=True
+            run_cloud=not args.no_cloud, run_api=True
         )
         return
 
-    # ─── CVE ───
+    # CVE
     if args.cve:
         from .modules.cve import CVELookup
         cl = CVELookup()
@@ -88,16 +195,11 @@ def main():
             table.add_row("Severity", info.severity)
             table.add_row("Desc", info.description[:150])
             console.print(table)
-            exp = cl.find_exploits(info.cve_id)
-            if exp["exploit_available"]:
-                console.print(f"\n[red]EXPLOIT AVAILABLE[/red]")
-                if exp["exploit_db_id"]:
-                    console.print(f"  Exploit-DB: https://www.exploit-db.com/exploits/{exp['exploit_db_id']}")
         else:
             console.print(f"[yellow]CVE not found[/yellow]")
         return
 
-    # ─── AUDIT ───
+    # Audit
     if args.audit:
         from .modules.password import PasswordAuditor
         auditor = PasswordAuditor()
@@ -118,13 +220,13 @@ def main():
             console.print(f"  [green]-> {s}[/green]")
         return
 
-    # ─── ALERTS ───
+    # Alerts
     if args.alerts:
         from .modules.alert import AlertManager
         am = AlertManager()
         alerts = am.get_alerts()
         if alerts:
-            table = Table(title=f"Recent Alerts ({len(alerts)})")
+            table = Table(title=f"Alerts ({len(alerts)})")
             table.add_column("Time")
             table.add_column("Sev", style="bold")
             table.add_column("Title")
@@ -137,7 +239,7 @@ def main():
             console.print("[yellow]No alerts[/yellow]")
         return
 
-    # ─── HISTORY/COMPARE/STATS ───
+    # History
     if args.history or args.compare or args.stats:
         from .modules.history import HistoryDB
         db = HistoryDB()
@@ -152,7 +254,6 @@ def main():
                 console.print(f"[bold]{c['target']}[/bold]: {c['scan_1']} vs {c['scan_2']}")
                 if c['new_ports']: console.print(f"  [red]NEW: {c['new_ports']}[/red]")
                 if c['closed_ports']: console.print(f"  [green]Closed: {c['closed_ports']}[/green]")
-                if c['new_vulns']: console.print(f"  [red]NEW vulns: {c['new_vulns']}[/red]")
         if args.history:
             h = db.get_history(limit=20)
             if h:
@@ -170,7 +271,7 @@ def main():
         db.close()
         return
 
-    # ─── BATCH ───
+    # Batch
     if args.batch:
         from .modules.batch import BatchScanner
         bs = BatchScanner(max_threads=args.threads)
@@ -189,7 +290,7 @@ def main():
         console.print(f"\n[green]Report: {bs.save_report(results, args.output)}[/green]")
         return
 
-    # ─── ARP ───
+    # ARP
     if args.arp:
         from .modules.arp import ARPScanner
         ar = ARPScanner()
@@ -207,7 +308,7 @@ def main():
             console.print(table)
         return
 
-    # ─── TOPOLOGY ───
+    # Topology
     if args.topology:
         from .modules.topology import TopologyMapper
         tm = TopologyMapper()
@@ -216,7 +317,7 @@ def main():
         console.print(tm.to_ascii(result))
         return
 
-    # ─── DNS ZONE ───
+    # Zone
     if args.zone and args.target:
         from .modules.dnszone import DNSZoneScanner
         dz = DNSZoneScanner()
@@ -227,13 +328,9 @@ def main():
             console.print(f"  [red]AXFR OPEN! ({len(result['axfr_records'])} records)[/red]")
         else:
             console.print(f"  [green]AXFR blocked[/green]")
-        if result["brute_subdomains"]:
-            console.print(f"\n  Subs: {len(result['brute_subdomains'])} found")
-            for r in result["brute_subdomains"][:10]:
-                console.print(f"    {r.name} → {r.value}")
         return
 
-    # ─── BANNER ───
+    # Banner
     if args.banner and args.target:
         from .modules.banner import BannerGrabber
         bg = BannerGrabber()
@@ -250,7 +347,7 @@ def main():
             console.print(table)
         return
 
-    # ─── RDNS ───
+    # RDNS
     if args.rdns:
         from .modules.reverse import ReverseDNS
         rd = ReverseDNS()
@@ -269,7 +366,7 @@ def main():
             console.print("[yellow]No PTR records[/yellow]")
         return
 
-    # ─── SNIFF ───
+    # Sniff
     if args.sniff:
         from .modules.packet import PacketSniffer
         ps = PacketSniffer()
@@ -288,7 +385,7 @@ def main():
             console.print("[yellow]No packets (need root)[/yellow]")
         return
 
-    # ─── MSF ───
+    # MSF
     if args.msf:
         from .modules.msf import MetasploitController
         msf = MetasploitController()
@@ -307,7 +404,7 @@ def main():
             console.print(table)
         return
 
-    # ─── CLOUD ───
+    # Cloud
     if args.cloud and args.target:
         from .modules.cloud import CloudScanner
         cs = CloudScanner()
@@ -327,14 +424,14 @@ def main():
             console.print("[green]Clean[/green]")
         return
 
-    # ─── API ───
+    # API Discovery
     if args.api and args.target:
         from .modules.api import APIDiscoverer
         ad = APIDiscoverer()
-        console.print(f"[bold magenta]API Discovery: {args.target}[/bold magenta]\n")
+        console.print(f"[bold magenta]API: {args.target}[/bold magenta]\n")
         results = ad.scan(args.target)
         if results:
-            table = Table(title=f"API Endpoints ({len(results)})")
+            table = Table(title=f"Endpoints ({len(results)})")
             table.add_column("Path", style="cyan")
             table.add_column("Status")
             table.add_column("Reason")
@@ -351,7 +448,7 @@ def main():
         B1pwerApp().run()
         return
 
-    # ─── WiFi ───
+    # WiFi
     if args.wifi:
         from .modules.wifi import WiFiScanner
         wf = WiFiScanner()
@@ -373,7 +470,7 @@ def main():
             console.print(table)
         return
 
-    # ─── UDP ───
+    # UDP
     if args.udp:
         from .modules.udp import UDPScanner
         us = UDPScanner()
@@ -390,7 +487,7 @@ def main():
         console.print(table)
         return
 
-    # ─── SUBS ───
+    # Subs
     if args.subs:
         from .modules.subdomains import SubdomainScanner
         ss = SubdomainScanner()
@@ -405,7 +502,7 @@ def main():
             console.print(table)
         return
 
-    # ─── SSL ───
+    # SSL
     if args.ssl:
         from .modules.ssl import SSLScanner
         sa = SSLScanner()
@@ -422,7 +519,7 @@ def main():
         console.print(table)
         return
 
-    # ─── NUCLEI ───
+    # Nuclei
     if args.nuclei:
         from .modules.nuclei import NucleiScanner
         nuclei = NucleiScanner()
@@ -444,7 +541,7 @@ def main():
             console.print("[green]Clean[/green]")
         return
 
-    # ─── STANDARD SCAN ───
+    # Standard scan
     from .modules.scanner import B1pwerScanner
     from .modules.reporter import Reporter
     scanner = B1pwerScanner()
