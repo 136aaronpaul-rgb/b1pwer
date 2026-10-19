@@ -98,4 +98,3 @@ class BruteForcer:
         except:
             pass
         return results
-PYEOF   

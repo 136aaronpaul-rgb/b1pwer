@@ -63,6 +63,14 @@ def main():
     parser.add_argument("--multi", default="", help="Multi-target playbook: comma-separated targets")
     parser.add_argument("--update", action="store_true", help="Check for updates")
     parser.add_argument("--logs", action="store_true", help="Show recent logs")
+    parser.add_argument("--ad", action="store_true", help="Active Directory scan")
+    parser.add_argument("--ad-user", default="", help="AD username")
+    parser.add_argument("--ad-pass", default="", help="AD password")
+    parser.add_argument("--container", action="store_true", help="Container/K8s scan")
+    parser.add_argument("--iot", action="store_true", help="IoT device discovery")
+    parser.add_argument("--proxy", action="store_true", help="Reverse proxy detection")
+    parser.add_argument("--dashboard", action="store_true", help="Start web dashboard")
+    parser.add_argument("--dashboard-port", type=int, default=9090)
     parser.add_argument("--version", action="version",
                        version="b1pwer v1.0.0 | Aaron Paulos Division")
     args = parser.parse_args()
@@ -559,6 +567,98 @@ def main():
             console.print(table)
         else:
             console.print("[yellow]No logs yet[/yellow]")
+        return
+
+    # AD
+    if args.ad and args.target:
+        from .modules.active_directory import ADScanner
+        ad = ADScanner()
+        console.print(f"[bold magenta]AD Scan: {args.target}[/bold magenta]
+")
+        result = ad.scan(args.target, args.ad_user, args.ad_pass)
+        table = Table(title=f"AD - {result.domain or args.target}")
+        table.add_column("Item")
+        table.add_column("Value")
+        table.add_row("Domain", result.domain or "N/A")
+        table.add_row("Forest", result.forest or "N/A")
+        table.add_row("Users", str(len(result.users)))
+        table.add_row("Groups", str(len(result.groups)))
+        console.print(table)
+        if result.users:
+            console.print(f"
+[bold]Users ({len(result.users)}):[/bold]")
+            for u in result.users[:20]:
+                console.print(f"  {u}")
+        if result.groups:
+            console.print(f"
+[bold]Groups ({len(result.groups)}):[/bold]")
+            for g in result.groups[:20]:
+                console.print(f"  {g}")
+        return
+
+    # Container
+    if args.container:
+        from .modules.container import ContainerScanner
+        cs = ContainerScanner()
+        target = args.target or "127.0.0.1"
+        console.print(f"[bold magenta]Container Scan: {target}[/bold magenta]
+")
+        findings = cs.full_scan(target)
+        if findings:
+            table = Table(title=f"Containers ({len(findings)})")
+            table.add_column("Type")
+            table.add_column("Issue")
+            table.add_column("Sev", style="bold")
+            for f in findings:
+                sev_c = "red" if f.severity in ("CRITICAL","HIGH") else "yellow"
+                table.add_row(f.container, f.issue, f"[{sev_c}]{f.severity}[/{sev_c}]")
+            console.print(table)
+        else:
+            console.print("[green]No container issues found[/green]")
+        return
+
+    # IoT
+    if args.iot:
+        from .modules.iot import IoTScanner
+        iot = IoTScanner()
+        console.print(f"[bold magenta]IoT Discovery...[/bold magenta]
+")
+        devices = iot.discover()
+        if devices:
+            table = Table(title=f"IoT Devices ({len(devices)})")
+            table.add_column("IP", style="cyan")
+            table.add_column("Brand")
+            table.add_column("Model")
+            table.add_column("Services")
+            table.add_column("Vulns")
+            for d in devices:
+                table.add_row(d.ip, d.brand or "-", d.model[:30] or "-", ", ".join(d.services[:3]), str(len(d.vulns)))
+            console.print(table)
+        else:
+            console.print("[yellow]No IoT devices found[/yellow]")
+        return
+
+    # Proxy
+    if args.proxy and args.target:
+        from .modules.proxy import ProxyDetector
+        pd = ProxyDetector()
+        console.print(f"[bold magenta]Proxy Detection: {args.target}[/bold magenta]
+")
+        result = pd.detect(args.target)
+        table = Table(title=f"Proxy - {result.target}")
+        table.add_column("Item")
+        table.add_column("Value")
+        table.add_row("Proxy Type", result.proxy_type)
+        table.add_row("Provider", result.provider or "N/A")
+        table.add_row("Origin IP", result.origin_ip or "N/A")
+        table.add_row("Server", result.headers.get("server", "N/A"))
+        console.print(table)
+        return
+
+    # Dashboard
+    if args.dashboard:
+        from .modules.dashboard import start_dashboard
+        start_dashboard(args.dashboard_port)
         return
 
     if not args.target:
