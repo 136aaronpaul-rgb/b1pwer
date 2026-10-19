@@ -1,12 +1,31 @@
-# ⚡ b1pwer
+# b1pwer
 
-### Aaron Paulos Division | b1pwer.surge.sh
+**Network Recon & Threat Assessment**
 
-**Network Reconnaissance & Threat Assessment Tool**
+Built by **Aaron Paulos** | Aaron Paulos Division | Zimbabwe
 
-Built by **Aaron Paulos** | Zimbabwe 🇿🇼
+## 24 Modules
+
+Port Scanner, Nuclei, Subdomains, SSL, WiFi, Password Audit,
+DNS, Batch, History, CVE, Exploits, UDP, ARP, Topology,
+Zone Transfer, Banners, RDNS, Packet Capture, Metasploit,
+Cloud, API Discovery, PDF, Alerts, Playbook.
 
 ## Install
-```bash
-pip install -e .   
 
+pip install -e .
+
+## Usage
+
+b1pwer example.com --cli --playbook
+b1pwer 8.8.8.8 --cli
+b1pwer --cli --cve CVE-2021-44228
+b1pwer --audit mypassword
+
+## Website
+
+https://b1pwer.surge.sh
+
+## License
+
+MIT
